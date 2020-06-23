@@ -1,0 +1,12 @@
+{
+  "name": "prj1-sol",
+  "version": "1.0.0",
+  "description": "Name:\t\tAniket S Nikam B-Number:\tB00813622 Email:\t\tanikam1@binghamton.edu",
+  "main": "webpack.config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
