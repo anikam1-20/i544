@@ -1,6 +1,6 @@
 import './style.css';
 
-import $ from 'jquery';        //make jquery() available as $
+import $, { isNumeric } from 'jquery';        //make jquery() available as $
 import Meta from './meta.js';  //bundle the input to this program
 
 //default values
@@ -25,7 +25,7 @@ function makeRefUrl(ref) {
 }
 
 /** Return a jquery-wrapped element for tag and attr */
-function makeElement(tag, attr={}) {
+function makeElement(tag, attr = {}) {
   const $e = $(`<${tag}/>`);
   Object.entries(attr).forEach(([k, v]) => $e.attr(k, v));
   return $e;
@@ -72,6 +72,39 @@ function items(tag, meta, path, $element) {
 
 //@TODO
 
+function checkValidation($element, meta, eventType, path) {
+
+  if (meta.required || meta.chkFn) {
+    $element.on(eventType, function (e) {
+      const $valueT = $(e.target).val();
+      const errorID = (meta.attr.id || makeId(path)) + "-err";
+      const getErrorDivElement = ('div[id="' + errorID + '"]');
+
+      if ($(e.target).attr("type") === "checkbox" || $(e.target).attr("type") === "radio") {
+        const getParentDiv = $(e.target).parent().get(0).tagName;
+        if ($(getParentDiv + " input:checked").length === 0) {
+          $(getErrorDivElement).text(meta.required ? `The field ${meta.text} must be specified.` : "")
+        }
+        else {
+          $(getErrorDivElement).text("");
+        }
+      }
+
+      else if (($valueT.length === 0)) {
+        $(getErrorDivElement).text(meta.required ? `The field ${meta.text} must be specified.` : "")
+      }
+      else {
+        if (meta.chkFn) {
+          $(getErrorDivElement).text(meta.chkFn($valueT, meta, meta) ? "" : (meta.errMsgFn ? meta.errMsgFn($valueT, meta, meta) : ("invalid input " + $valueT)))
+        }
+        else {
+          $(getErrorDivElement).text("");
+        }
+      }
+    })
+  }
+}
+
 /********************** Type Routine Common Handling *******************/
 
 //@TODO
@@ -87,13 +120,29 @@ function block(meta, path, $element) { items('div', meta, path, $element); }
 
 function form(meta, path, $element) {
   const $form = items('form', meta, path, $element);
-  $form.submit(function(event) {
+  $form.submit(function (event) {
     event.preventDefault();
     const $form = $(this);
+    $("input,select,textarea", $form).trigger("blur"),
+      $("input,select", $form).trigger("change");
+
     //@TODO
-    // const results = ...;
-    // console.log(JSON.stringify(results, null, 2));
-  });
+    if (!$(".error", $form).toArray().some(meta => meta.innerHTML.trim().length > 0)) {
+      const $element = {};
+      const $results = $form.serializeArray();
+      $results.forEach(({ name: $results, value: $value }) => {
+        if (($results === "multiSelect") || ($results === "primaryColors")) {
+          $element[$results] = ($element[$results] || []).concat($value)
+        }
+        else {
+          $element[$results] = $value;
+        }
+      }),
+        console.log(JSON.stringify($element, null, 2));
+    }
+  }
+  );
+
 }
 
 function header(meta, path, $element) {
@@ -104,17 +153,73 @@ function header(meta, path, $element) {
 
 function input(meta, path, $element) {
   //@TODO
+  const $makeLabel = makeElement("label", Object.assign({}, meta.attr, { for: meta.attr.id || makeId(path) }));
+  $makeLabel.text(meta.text || '').append(meta.required ? "*" : "");
+  $element.append($makeLabel);
+
+  const $makeDiv = makeElement("div");
+  if (meta.subType === "textarea") {
+    const $makeTA = makeElement("textarea", meta.attr);
+    $makeDiv.append($makeTA);
+    $element.append($makeDiv);
+
+  }
+  else {
+    const $makeInput = makeElement("input", Object.assign({}, meta.attr, { type: meta.subType, id: meta.attr.id || makeId(path) }));
+    $makeDiv.append($makeInput);
+    $element.append($makeDiv);
+    checkValidation($makeInput, meta, "blur", path);
+  }
+
+  $makeDiv.append(makeElement("div", { class: "error", id: meta.attr.id || makeId(path) + "-err" }))
 }
 
 function link(meta, path, $element) {
   const parentType = getType(access(path.concat('..')));
-  const { text='', ref=DEFAULT_REF } = meta;
-  const attr = Object.assign({}, meta.attr||{}, { href: makeRefUrl(ref) });
+  const { text = '', ref = DEFAULT_REF } = meta;
+  const attr = Object.assign({}, meta.attr || {}, { href: makeRefUrl(ref) });
   $element.append(makeElement('a', attr).text(text));
 }
 
 function multiSelect(meta, path, $element) {
   //@TODO
+  const $makeLabel = makeElement("label", Object.assign({}, meta.attr, { for: meta.attr.id || makeId(path) }));
+  $makeLabel.text(meta.text || '').append(meta.required ? "*" : "");
+  $element.append($makeLabel);
+  const $makeDiv = makeElement("div");
+
+  const Mattr = meta.attr || {};
+  if (meta.items.length > (Meta._options.N_MULTI_SELECT || 4)) {
+    const $makeSelect = makeElement("select", Object.assign({}, Mattr, { multiple: true }));
+    $makeDiv.append($makeSelect);
+    meta.items.forEach(({ key: $element, text: meta }) => {
+      const $makeOption = makeElement("option", { value: $element });  //create option tag 
+      $makeOption.text(meta);
+      $makeSelect.append($makeOption);    //append option tag to select
+    })
+    $element.append($makeDiv);
+    checkValidation($makeSelect, meta, "change", path);
+  }
+  else {
+    const $makeDivforRadio = makeElement("div", { class: 'fieldset' });
+    $makeDiv.append($makeDivforRadio);
+    const Attr = meta.attr || {};
+    (meta.items || []).forEach(({ key: $element, text: meta }, i = 0) => {
+      const $makeLabel = makeElement("label", Object.assign({}, Attr, { for: makeId(path) }));
+      $makeDivforRadio.append($makeLabel.text($element));
+      const $makeInputTag = makeElement("input", Object.assign({}, Attr, {
+        value: $element,
+        type: "checkbox",
+        id: makeId(path) + "-" + i++
+      }))
+      $makeDivforRadio.append($makeInputTag);
+    })
+    $element.append($makeDiv);
+    checkValidation($makeDivforRadio, meta, "change", path);
+  }
+
+  $makeDiv.append(makeElement("div", { class: "error", id: meta.attr.id || makeId(path) + "-err" }))
+
 }
 
 function para(meta, path, $element) { items('p', meta, path, $element); }
@@ -130,11 +235,54 @@ function segment(meta, path, $element) {
 
 
 function submit(meta, path, $element) {
-  //@TODO
+
+  //create empty div and append to $element
+  const $makeSubmitDiv = makeElement("div");
+  $element.append($makeSubmitDiv);
+
+  //create Submit button, assign meta.text and append to $element
+  const $makeSubmitButton = makeElement("button", Object.assign({}, meta.attr, { type: "submit" }))
+  $makeSubmitButton.text(meta.text || "Submit");
+  $element.append($makeSubmitButton);
+
 }
 
 function uniSelect(meta, path, $element) {
   //@TODO
+  const $makeLabel = makeElement("label", Object.assign({}, meta.attr, { for: meta.attr.id || makeId(path) }));
+  $makeLabel.text(meta.text || '').append(meta.required ? "*" : "");
+  $element.append($makeLabel);
+  const $makeDiv = makeElement("div");
+
+  if (meta.items.length > (Meta._options.N_UNI_SELECT || 4)) {
+    const $makeSelect = makeElement("select", meta.attr);
+    $makeDiv.append($makeSelect);
+    meta.items.forEach(({ key: $element, text: meta }) => {
+      const $makeOption = makeElement("option", { value: $element });  //create option tag 
+      $makeOption.text(meta);
+      $makeSelect.append($makeOption);    //append option tag to select
+    })
+    $element.append($makeDiv);
+    checkValidation($makeSelect, meta, "change", path);
+  }
+  else {
+    const $makeDivforRadio = makeElement("div", { class: 'fieldset' });
+    $makeDiv.append($makeDivforRadio);
+    const Attr = meta.attr || {};
+    (meta.items || []).forEach(({ key: $element, text: meta }, i = 0) => {
+      const $makeLabel = makeElement("label", Object.assign({}, Attr, { for: makeId(path) }));
+      $makeDivforRadio.append($makeLabel.text($element));
+      const $makeInputTag = makeElement("input", Object.assign({}, Attr, {
+        value: $element,
+        type: "radio",
+        id: makeId(path) + "-" + i++
+      }))
+      $makeDivforRadio.append($makeInputTag);
+    })
+    $element.append($makeDiv);
+  }
+
+  $makeDiv.append(makeElement("div", { class: "error", id: meta.attr.id || makeId(path) + "-err" }))
 }
 
 
@@ -154,7 +302,7 @@ const FNS = {
 
 /*************************** Top-Level Code ****************************/
 
-function render(path, $element=$('body')) {
+function render(path, $element = $('body')) {
   const meta = access(path);
   if (!meta) {
     $element.append(`<p>Path ${makeId(path)} not found</p>`);
@@ -173,7 +321,7 @@ function render(path, $element=$('body')) {
 
 function go() {
   const ref = getRef() || DEFAULT_REF;
-  render([ ref ]);
+  render([ref]);
 }
 
 go();
