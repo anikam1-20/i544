@@ -3,5 +3,5 @@ B-Number:	B00813622
 Email:		anikam1@binghamton.edu
 
 Reference-
-In the form submit click Copied the condition inside the if statement i.e to check if there are any non-empty error messages from the illustrated example
+In the form submit click the condition inside the if statement i.e to check if there are any non-empty error messages (Copied from the illustrated example) 
 referred - if (!$(".error", $form).toArray().some(meta => meta.innerHTML.trim().length > 0))
