@@ -2,5 +2,8 @@ Name:		Aniket S Nikam
 B-Number:	B00813622
 Email:		anikam1@binghamton.edu
 
-Add text here as needed.
+
+Completed the project
+In form on submit click the condition inside if 
+i.e. (!$(".error", $form).toArray().some(meta => meta.innerHTML.trim().length > 0))  
 
