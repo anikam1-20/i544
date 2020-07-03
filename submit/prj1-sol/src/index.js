@@ -158,6 +158,8 @@ function input(meta, path, $element) {
   $element.append($makeLabel);
 
   const $makeDiv = makeElement("div");
+
+  //check if the subType is textarea
   if (meta.subType === "textarea") {
     const $makeTA = makeElement("textarea", meta.attr);
     $makeDiv.append($makeTA);
@@ -168,10 +170,12 @@ function input(meta, path, $element) {
     const $makeInput = makeElement("input", Object.assign({}, meta.attr, { type: meta.subType, id: meta.attr.id || makeId(path) }));
     $makeDiv.append($makeInput);
     $element.append($makeDiv);
-    checkValidation($makeInput, meta, "blur", path);
+    checkValidation($makeInput, meta, "blur", path); //check for validations
   }
 
-  $makeDiv.append(makeElement("div", { class: "error", id: meta.attr.id || makeId(path) + "-err" }))
+  //create error div
+  const $makeErrorDiv = makeElement("div", Object.assign({}, meta.attr || {}, { class: "error", id: meta.attr.id || makeId(path) + "-err" }));
+  $makeDiv.append($makeErrorDiv);
 }
 
 function link(meta, path, $element) {
@@ -198,7 +202,7 @@ function multiSelect(meta, path, $element) {
       $makeSelect.append($makeOption);    //append option tag to select
     })
     $element.append($makeDiv);
-    checkValidation($makeSelect, meta, "change", path);
+    checkValidation($makeSelect, meta, "change", path); //check for validations
   }
   else {
     const $makeDivforRadio = makeElement("div", { class: 'fieldset' });
@@ -215,10 +219,12 @@ function multiSelect(meta, path, $element) {
       $makeDivforRadio.append($makeInputTag);
     })
     $element.append($makeDiv);
-    checkValidation($makeDivforRadio, meta, "change", path);
+    checkValidation($makeDivforRadio, meta, "change", path);  //check for validations
   }
 
-  $makeDiv.append(makeElement("div", { class: "error", id: meta.attr.id || makeId(path) + "-err" }))
+  //create error div
+  const $makeErrorDiv = makeElement("div", Object.assign({}, meta.attr || {}, { class: "error", id: meta.attr.id || makeId(path) + "-err" }));
+  $makeDiv.append($makeErrorDiv);
 
 }
 
@@ -263,7 +269,7 @@ function uniSelect(meta, path, $element) {
       $makeSelect.append($makeOption);    //append option tag to select
     })
     $element.append($makeDiv);
-    checkValidation($makeSelect, meta, "change", path);
+    checkValidation($makeSelect, meta, "change", path); //check for validations
   }
   else {
     const $makeDivforRadio = makeElement("div", { class: 'fieldset' });
@@ -282,7 +288,9 @@ function uniSelect(meta, path, $element) {
     $element.append($makeDiv);
   }
 
-  $makeDiv.append(makeElement("div", { class: "error", id: meta.attr.id || makeId(path) + "-err" }))
+  //create error div
+  const $makeErrorDiv = makeElement("div", Object.assign({}, meta.attr || {}, { class: "error", id: meta.attr.id || makeId(path) + "-err" }));
+  $makeDiv.append($makeErrorDiv);
 }
 
 
