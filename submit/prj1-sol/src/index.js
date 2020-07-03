@@ -82,7 +82,17 @@ function checkValidation($element, meta, eventType, path) {
 
       if ($(e.target).attr("type") === "checkbox" || $(e.target).attr("type") === "radio") {
         const getParentDiv = $(e.target).parent().get(0).tagName;
-        if ($(getParentDiv + " input:checked").length === 0) {
+        if ($(getParentDiv + " input:checkbox:checked").length === 0) {
+          $(getErrorDivElement).text(meta.required ? `The field ${meta.text} must be specified.` : "")
+        }
+        else {
+          $(getErrorDivElement).text("");
+        }
+      }
+
+      else if ($(e.target).attr("type") === "radio") {
+        const getParentDiv = $(e.target).parent().get(0).tagName;
+        if ($(getParentDiv + " input:radio:checked").length === 0) {
           $(getErrorDivElement).text(meta.required ? `The field ${meta.text} must be specified.` : "")
         }
         else {
