@@ -6,6 +6,8 @@ import mongo from 'mongodb';
 
 import assert from 'assert';
 import util from 'util';
+import { title } from 'process';
+import { Console } from 'console';
 
 
 /** 
@@ -65,21 +67,30 @@ export default class Model {
 
   /** Return a new instance of Model set up to use database specified
    *  by dbUrl
-   */ 
+   */
   static async make(dbUrl) {
     let client;
     try {
       //@TODO
+      client = await mongo.connect(dbUrl, MONGO_CONNECT_OPTIONS);
+
+      const db = client.db(DB_NAME);
+      const users = db.collection(Books_Catalog);
+      const createCart = db.collection(CART);
+
+      // return new Model({ client, users });
       const props = {
-	validator: new Validator(META),
-	//@TODO other properties
+        validator: new Validator(META),
+        conn: new Model({ client, users }),
+        cartNew: new Model({ client, createCart })
       };
       const model = new Model(props);
+
       return model;
     }
     catch (err) {
       const msg = `cannot connect to URL "${dbUrl}": ${err}`;
-      throw [ new ModelError('DB', msg) ];
+      throw [new ModelError('DB', msg)];
     }
   }
 
@@ -88,13 +99,28 @@ export default class Model {
    */
   async close() {
     //@TODO
+    try {
+      await this.conn.client.close();
+    }
+    catch (err) {
+      const msg = `cannot connect to URL: ${err}`;
+      throw [new ModelError('DB', msg)];
+    }
   }
 
   /** Clear out all data stored within this model. */
   async clear() {
     //@TODO
+    try {
+      await this.conn.users.drop();
+      await this.cartNew.createCart.drop();
+    }
+    catch (err) {
+      const msg = `No Collection found: ${err}`;
+      throw [new ModelError('BAD_ID', msg)];
+    }
   }
-  
+
   //Action routines
 
   /** Create a new cart.  Returns ID of newly created cart.  The
@@ -107,7 +133,15 @@ export default class Model {
   async newCart(rawNameValues) {
     const nameValues = this._validate('newCart', rawNameValues);
     //@TODO
-    return '@TODO';
+
+    let cartID = String(Math.random());
+    try {
+      await this.cartNew.createCart.insertOne({ _id: cartID })
+    }
+    catch (err) {
+
+    }
+    return cartID;
   }
 
   /** Given fields { cartId, sku, nUnits } = rawNameValues, update
@@ -121,8 +155,35 @@ export default class Model {
   async cartItem(rawNameValues) {
     const nameValues = this._validate('cartItem', rawNameValues);
     //@TODO
+
+    const checkCartId = await this.cartNew.createCart.find({ _id: `${nameValues.cartId}` }).count();
+    const checkifSKUPresent = await this.conn.users.find({ isbn: `${nameValues.sku}` }).count();
+    if (checkCartId === 1 && checkifSKUPresent === 1) {
+      const set = Object.assign({}, nameValues);
+      const getSkuCount = await this.cartNew.createCart.find({ "cartItems.sku": `${nameValues.sku}` }).count()
+      if (getSkuCount === 1 && nameValues.nUnits === 0) {
+        const ret1 = await this.cartNew.createCart.updateOne({ _id: nameValues.cartId, "cartItems.sku": nameValues.sku }, { $currentDate: { _lastModified: true }, $pull: { 'cartItems': { 'sku': nameValues.sku } } })
+      }
+      else if (getSkuCount === 1) {
+        const ret1 = await this.cartNew.createCart.updateOne({ _id: nameValues.cartId, "cartItems.sku": nameValues.sku }, { $currentDate: { _lastModified: true }, $set: { 'cartItems.$.nUnits': nameValues.nUnits } })
+      }
+      else if (nameValues.nUnits !== 0) {
+        const ret = await this.cartNew.createCart.updateOne({ _id: nameValues.cartId }, { $currentDate: { _lastModified: true }, $push: { cartItems: { sku: nameValues.sku, nUnits: nameValues.nUnits } } }, { upsert: true });
+      }
+    }
+    else {
+      if (checkCartId === 0) {
+        const msg = `no updates for cart "${nameValues.cartId}"`;
+        throw [new ModelError(' BAD_ID', msg, 'cartId')];
+      }
+      else {
+        const msg = `sku does not specify the isbn of an existing book: ${nameValues.sku}`;
+        throw [new ModelError(' BAD_ID', msg, 'sku')];
+      }
+
+    }
   }
-  
+
   /** Given fields { cartId } = nameValues, return cart identified by
    *  cartId.  The cart is returned as an object which contains a
    *  mapping from SKU's to *positive* integers (representing the
@@ -136,8 +197,25 @@ export default class Model {
    */
   async getCart(rawNameValues) {
     const nameValues = this._validate('getCart', rawNameValues);
+
     //@TODO
-    return {};
+    const check = await this.cartNew.createCart.find({ _id: `${nameValues.cartId}` }, { projection: { _id: 0 } }).toArray();
+    var obj = {
+      "_lastModified": check[0]._lastModified
+    };
+
+    check.forEach(element => {
+      element.cartItems.forEach(ele => {
+        obj[ele.sku] = ele.nUnits;
+      });
+    });
+
+    if (check.length === 0) {
+      const msg = `cartId does not reference a cart "${nameValues.cartId}"`;
+      throw [new ModelError(' BAD_ID', msg, 'cartId')];
+    }
+    else
+      return obj;
   }
 
   /** Given fields { isbn, title, authors, publisher, year, pages } =
@@ -151,10 +229,22 @@ export default class Model {
    *  This routine should set a `_lastModified` field in the book to
    *  the current Date timestamp.
    */
+
+
+
   async addBook(rawNameValues) {
     const nameValues = this._validate('addBook', rawNameValues);
     //@TODO
+    try {
+      const set = Object.assign({}, nameValues);
+      const ret = await this.conn.users.updateOne({ isbn: nameValues.isbn }, { $currentDate: { _lastModified: true }, $set: set }, { upsert: true });
+      return nameValues.isbn;
+    }
+    catch (err) {
+      return err
+    }
   }
+
 
   /** Given fields { isbn, authorsTitle, _count=COUNT, _index=0 } =
    *  nameValues, retrieve list of all books with specified isbn (if
@@ -170,7 +260,16 @@ export default class Model {
   async findBooks(rawNameValues) {
     const nameValues = this._validate('findBooks', rawNameValues);
     //@TODO
-    return [];
+    if (nameValues.hasOwnProperty('authorsTitleSearch')) {
+      const ret = await this.conn.users.find({ title: { $regex: `${Object.values(nameValues)}` } })
+      const retUsers = await ret.toArray();
+      return [retUsers];
+    }
+    else if (nameValues.hasOwnProperty('isbn')) {
+      const ret = await this.conn.users.find(nameValues)
+      const retUsers = await ret.toArray();
+      return [retUsers];
+    }
   }
 
   //wrapper around this.validator to verify that no external field
@@ -183,10 +282,10 @@ export default class Model {
     }
     catch (err) {
       if (err instanceof Array) { //something we understand
-	errs = err;
+        errs = err;
       }
       else {
-	throw err; //not expected, throw upstairs
+        throw err; //not expected, throw upstairs
       }
     }
     if (rawNameValues._id !== undefined) {
@@ -195,8 +294,8 @@ export default class Model {
     if (errs.length > 0) throw errs;
     return nameValues;
   }
-  
-  
+
+
 };
 
 //use as second argument to mongo.connect()
@@ -206,3 +305,9 @@ const MONGO_CONNECT_OPTIONS = { useUnifiedTopology: true };
 const COUNT = 5;
 
 //define private constants and functions here.
+//const dbUrl = 'mongodb://localhost:27017';
+const DB_NAME = "books"
+const Books_Catalog = "booksCatalog"
+
+//Shopping cart collection
+const CART = "ShoppingCart"
