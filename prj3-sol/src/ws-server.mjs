@@ -5,6 +5,7 @@ import bodyParser from 'body-parser';
 import querystring from 'querystring';
 
 import ModelError from './model-error.mjs';
+import { get } from 'http';
 
 //not all codes necessary
 const OK = 200;
@@ -16,6 +17,8 @@ const CONFLICT = 409;
 const SERVER_ERROR = 500;
 
 const BASE = 'api';
+const BOOKS_BASE = 'books';
+const CART_BASE = 'cart';
 
 export default function serve(port, meta, model) {
   const app = express();
@@ -23,7 +26,7 @@ export default function serve(port, meta, model) {
   app.locals.meta = meta;
   app.locals.model = model;
   setupRoutes(app);
-  app.listen(port, function() {
+  app.listen(port, function () {
     console.log(`listening on port ${port}`);
   });
 }
@@ -37,6 +40,12 @@ function setupRoutes(app) {
 
   //application routes
   app.get(`/${BASE}`, doBase(app));
+  app.get(`/${BASE}/books`, doFind(app));
+  app.get(`/${BASE}/books/:isbn`, doFindISBN(app));
+  app.post(`/${BASE}/carts`, doCreateCart(app));
+  app.get(`/${BASE}/carts/:cartId`, doGetCart(app));
+  app.patch(`/${BASE}/carts/:cartId`, doUpdateCart(app));
+  //app.get(`/${BASE}/carts`, doDisplayCarts(app));
   //@TODO: add other application routes
 
   //must be last
@@ -63,11 +72,13 @@ function reqBaseUrl(req, res, next) {
 }
 
 function doBase(app) {
-  return function(req, res) { 
+  return function (req, res) {
     try {
       const links = [
-	{ rel: 'self', name: 'self', href: req.selfUrl, },
-	//@TODO add links for book and cart collections
+        { rel: 'self', name: 'self', href: req.selfUrl, },
+        //links for book and cart collections
+        { rel: 'collection', name: 'books', href: req.selfUrl + `/books`, },
+        { rel: 'collection', name: 'carts', href: req.selfUrl + `/carts`, },
       ];
       res.json({ links });
     }
@@ -80,31 +91,174 @@ function doBase(app) {
 
 //@TODO: Add handlers for other application routes
 
+function doFind(app) {
+  return async function (req, res) {
+    try {
+      // let a = querystring.parse(req.selfUrl, "index");
+      // console.log(a)
+      const q = req.query;
+      const getIndex = req.query._index;
+      console.log(getIndex);
+      const results = await app.locals.model.findBooks(q);
+      console.log(results);
+      if (results.length === 0) {
+        const message = `${req.method} not supported for ${req.originalUrl}`;
+        const result = {
+          status: NOT_FOUND,
+          errors: [{ code: 'FORM_ERROR', message, },],
+        };
+        res.type('text').
+          status(400).
+          json(result);
+      }
+      else {
+        const finalR = results.map(obj => ({
+          ...obj,
+          links: {
+            href: req.selfUrl.slice(0, req.selfUrl.lastIndexOf("?")) + `/${obj.isbn}`,
+            name: `book`,
+            rel: "details"
+          }
+        }))
+
+        // if (req.selfUrl.includes("_index")) {
+        //   res.json({ links: [{ href: req.selfUrl, name: `self`, rel: "self" },], result: finalR });
+        // }
+        res.json({ links: [{ href: req.selfUrl, name: `self`, rel: "self" }], result: finalR });
+      }
+    }
+    catch (err) {
+      const mapped = mapError(err);
+      res.status(mapped.status).json(mapped);
+    }
+  };
+}
+
+function doFindISBN(app) {
+  return async function (req, res) {
+    try {
+      const q = req.params.isbn;
+      console.log(q);
+      const results = await app.locals.model.findBooks({ isbn: q });
+      if (results.length === 0) {
+        const message = `${req.method} not supported for ${req.originalUrl}`;
+        const result = {
+          status: NOT_FOUND,
+          errors: [{ code: 'FORM_ERROR', message, },],
+        };
+        res.type('text').
+          status(400).
+          json(result);
+      }
+      else {
+        //        console.log(results);
+        res.json({ result: results, links: [{ href: req.selfUrl, rel: `self`, name: "self" }] });
+      }
+    }
+    catch (err) {
+      const mapped = mapError(err);
+      res.status(mapped.status).json(mapped);
+    }
+  };
+}
+
+function doCreateCart(app) {
+  return async function (req, res) {
+    try {
+      const obj = req.body;
+      console.log(obj);
+      const results = await app.locals.model.newCart(obj);
+      console.log(results);
+      res.append('Location', req.selfUrl + '/' + results);
+      res.sendStatus(CREATED);
+      res.end();
+    }
+    catch (err) {
+      const mapped = mapError(err);
+      res.status(mapped.status).json(mapped);
+    }
+  };
+}
+
+function doGetCart(app) {
+  //console.log("in Get Cart")
+  return async function (req, res) {
+    try {
+      console.log("hey")
+      const q = req.params.cartId;
+      //console.log(q);
+      const results = await app.locals.model.getCart({ cartId: q });
+      console.log([results]);
+      const items = Object.entries(results).filter(([k, v]) => k !== '_id' && v > 0);
+
+      if (items.length >= 2) {
+        items.shift();
+        console.log(items);
+        const finalR = items.map((obj, i) => ({
+          links: {
+            href: req.selfUrl.slice(0, req.selfUrl.lastIndexOf("carts")) + `books/${obj.slice(0, obj.lastIndexOf(","))}`,
+            name: "book",
+            rel: `item`
+          },
+          nUnits: `${obj.toString().split(",")[1]}`,
+          sku: `${obj.slice(0, obj.lastIndexOf(","))}`
+        }))
+        res.json({ _lastModified: results._lastModified, links: [{ href: req.selfUrl, rel: `self`, name: "self" }], result: finalR });
+      }
+      else {
+        res.json({ _lastModified: results._lastModified, links: [{ href: req.selfUrl, rel: `self`, name: "self" }], result: results });
+      }
+    }
+    catch (err) {
+      //console.log("error")
+
+      const mapped = mapError(err);
+      res.status(mapped.status).json(mapped);
+    }
+  };
+}
+
+function doUpdateCart(app) {
+  return async function (req, res) {
+    try {
+      const patch = Object.assign({}, req.body);
+      patch.cartId = req.params.cartId;
+      const results = await app.locals.model.cartItem(patch);
+      res.sendStatus(OK);
+      //res.json(results);
+    }
+    catch (err) {
+      const mapped = mapError(err);
+      res.status(mapped.status).json(mapped);
+    }
+  };
+}
+
 /** Default handler for when there is no route for a particular method
  *  and path.
  */
 function do404(app) {
-  return async function(req, res) {
+  return async function (req, res) {
     const message = `${req.method} not supported for ${req.originalUrl}`;
     const result = {
       status: NOT_FOUND,
-      errors: [	{ code: 'NOT_FOUND', message, }, ],
+      errors: [{ code: 'NOT_FOUND', message, },],
     };
     res.type('text').
-	status(404).
-	json(result);
+      status(404).
+      json(result);
   };
 }
 
 
 /** Ensures a server error results in nice JSON sent back to client
  *  with details logged on console.
- */ 
+ */
 function doErrors(app) {
-  return async function(err, req, res, next) {
+  return async function (err, req, res, next) {
     const result = {
       status: SERVER_ERROR,
-      errors: [ { code: 'SERVER_ERROR', message: err.message } ],
+      errors: [{ code: 'SERVER_ERROR', message: err.message }],
     };
     res.status(SERVER_ERROR).json(result);
     console.error(err);
@@ -129,12 +283,12 @@ function mapError(err) {
   const status =
     isDomainError ? (ERROR_MAP[err[0].code] || BAD_REQUEST) : SERVER_ERROR;
   const errors =
-	isDomainError
-	? err.map(e => ({ code: e.code, message: e.message, name: e.name }))
-        : [ { code: 'SERVER_ERROR', message: err.toString(), } ];
+    isDomainError
+      ? err.map(e => ({ code: e.code, message: e.message, name: e.name }))
+      : [{ code: 'SERVER_ERROR', message: err.toString(), }];
   if (!isDomainError) console.error(err);
   return { status, errors };
-} 
+}
 
 /****************************** Utilities ******************************/
 

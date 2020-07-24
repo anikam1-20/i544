@@ -24,18 +24,18 @@ export default class Validator {
   validate(act, nameValues) {
     const trimmedNameValues =
       Object.entries(nameValues).map(([k, v]) => {
-  	return (v === undefined || v === null)
-	  ? [k, '']
-	  : typeof v === 'object'
-	  ? [ k, v ]
-	  : [k, String(v).trim()];
+        return (v === undefined || v === null)
+          ? [k, '']
+          : typeof v === 'object'
+            ? [k, v]
+            : [k, String(v).trim()];
       });
     const obj = Object.fromEntries(trimmedNameValues);
     const out = {};
     const meta = this.meta[act];
     if (!meta) {
-      throw [ new ModelError(`BAD_ACT', 'bad action ${act}`) ];
-    } 
+      throw [new ModelError(`BAD_ACT', 'bad action ${act}`)];
+    }
     const errors = [];
     const required = new Set(meta.required);
     const msgSuffix = `for action ${act}`;
@@ -43,41 +43,41 @@ export default class Validator {
       required.delete(name);
       const info = meta.fields[name];
       if (name.startsWith('_')) {
-	out[name] = (value.match(/^\d+$/)) ? Number(value) : value;
+        out[name] = (value.match(/^\d+$/)) ? Number(value) : value;
       }
       else if (info === undefined) {
-	if (!meta.allowUnknownFields) {
-	  const msg = `unknown field ${name} ${msgSuffix}`;
-	  errors.push(new ModelError('BAD_FIELD', msg, name));
-	}
+        if (!meta.allowUnknownFields) {
+          const msg = `unknown field ${name} ${msgSuffix}`;
+          errors.push(new ModelError('BAD_FIELD', msg, name));
+        }
       }
       else {
-	const err = (value !== '' && info.errFn) && info.errFn(value, info);
-	if (err) {
-	  const msg = `bad value: "${value}": ${err.replace(/\s+/g, ' ')}`;
-	  errors.push(new ModelError('BAD_FIELD_VALUE', msg, name));
-	}
-	else {
-	  out[name] = info.val ? info.val(value) : value;
-	}
+        const err = (value !== '' && info.errFn) && info.errFn(value, info);
+        if (err) {
+          const msg = `bad value: "${value}": ${err.replace(/\s+/g, ' ')}`;
+          errors.push(new ModelError('BAD_FIELD_VALUE', msg, name));
+        }
+        else {
+          out[name] = info.val ? info.val(value) : value;
+        }
       }
     } //for
     if (required.size > 0) {
       const names = Array.from(required).
-	    map(n => `"${meta.fields[n].label}"`).
-	    join(', ');
+        map(n => `"${meta.fields[n].label}"`).
+        join(', ');
       errors.push(new ModelError('MISSING_FIELD',
-				`missing fields ${names}.`));
+        `missing fields ${names}.`));
     }
     if (errors.length === 0) {
       if (meta.errFn) {
-	const msg = meta.errFn(obj, meta);
-	if (msg) errors.push(new ModelError('FORM_ERROR', msg));
+        const msg = meta.errFn(obj, meta);
+        if (msg) errors.push(new ModelError('FORM_ERROR', msg));
       }
     }
     if (errors.length > 0) throw errors;
     return out;
   }
-  
+
 };
 
