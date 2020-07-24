@@ -45,7 +45,6 @@ function setupRoutes(app) {
   app.post(`/${BASE}/carts`, doCreateCart(app));
   app.get(`/${BASE}/carts/:cartId`, doGetCart(app));
   app.patch(`/${BASE}/carts/:cartId`, doUpdateCart(app));
-  //app.get(`/${BASE}/carts`, doDisplayCarts(app));
   //@TODO: add other application routes
 
   //must be last
@@ -116,10 +115,10 @@ function doFind(app) {
       res.json({ links: [{ href: req.selfUrl, name: `self`, rel: "self" }], result: finalR });
     }
     catch (err) {
-      const message = `${req.method} not supported for ${req.originalUrl}`;
+      const message = `At least one search field must be specified.`;
       const result = {
         status: NOT_FOUND,
-        errors: [{ code: 'FORM_ERROR', message, },],
+        errors: [{ code: 'FORM_ERROR', message, name: "" },],
       };
       res.type('text').
         status(400).
