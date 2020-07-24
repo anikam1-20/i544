@@ -91,68 +91,66 @@ function doBase(app) {
 
 //@TODO: Add handlers for other application routes
 
+/**
+ * Search the books based on query parameters specified in the URL using the   
+ * findBooks() method from model.mjs 
+ */
 function doFind(app) {
   return async function (req, res) {
     try {
-      // let a = querystring.parse(req.selfUrl, "index");
-      // console.log(a)
-      const q = req.query;
+      const searchQuery = req.query;
       const getIndex = req.query._index;
-      console.log(getIndex);
-      const results = await app.locals.model.findBooks(q);
-      console.log(results);
-      if (results.length === 0) {
-        const message = `${req.method} not supported for ${req.originalUrl}`;
-        const result = {
-          status: NOT_FOUND,
-          errors: [{ code: 'FORM_ERROR', message, },],
-        };
-        res.type('text').
-          status(400).
-          json(result);
-      }
-      else {
-        const finalR = results.map(obj => ({
-          ...obj,
-          links: {
-            href: req.selfUrl.slice(0, req.selfUrl.lastIndexOf("?")) + `/${obj.isbn}`,
-            name: `book`,
-            rel: "details"
-          }
-        }))
+      //console.log(getIndex);
+      const results = await app.locals.model.findBooks(searchQuery);
+      //console.log(results);
 
-        // if (req.selfUrl.includes("_index")) {
-        //   res.json({ links: [{ href: req.selfUrl, name: `self`, rel: "self" },], result: finalR });
-        // }
-        res.json({ links: [{ href: req.selfUrl, name: `self`, rel: "self" }], result: finalR });
-      }
+      const finalR = results.map(obj => ({
+        ...obj,
+        links: {
+          href: req.selfUrl.slice(0, req.selfUrl.lastIndexOf("?")) + `/${obj.isbn}`,
+          name: `book`,
+          rel: "details"
+        }
+      }))
+
+      res.json({ links: [{ href: req.selfUrl, name: `self`, rel: "self" }], result: finalR });
     }
     catch (err) {
-      const mapped = mapError(err);
-      res.status(mapped.status).json(mapped);
+      const message = `${req.method} not supported for ${req.originalUrl}`;
+      const result = {
+        status: NOT_FOUND,
+        errors: [{ code: 'FORM_ERROR', message, },],
+      };
+      res.type('text').
+        status(400).
+        json(result);
     }
   };
 }
 
+/**
+ * Search the book based on specified isbn of the book in the URL using the   
+ * findBooks() method from model.mjs. Also checks if the specified isbn is present in the database/books catalog
+ */
 function doFindISBN(app) {
   return async function (req, res) {
     try {
-      const q = req.params.isbn;
-      console.log(q);
-      const results = await app.locals.model.findBooks({ isbn: q });
+      const searchisbn = req.params.isbn;
+      //console.log(q);
+      const results = await app.locals.model.findBooks({ isbn: searchisbn });
       if (results.length === 0) {
-        const message = `${req.method} not supported for ${req.originalUrl}`;
+        const message = `no book for isbn ${searchisbn}`;
         const result = {
           status: NOT_FOUND,
-          errors: [{ code: 'FORM_ERROR', message, },],
+          errors: [{ code: 'BAD_ID', message, name: "isbn" },],
         };
         res.type('text').
-          status(400).
+          status(404).
           json(result);
       }
       else {
         //        console.log(results);
-        res.json({ result: results, links: [{ href: req.selfUrl, rel: `self`, name: "self" }] });
+        res.json({ links: [{ href: req.selfUrl, rel: `self`, name: "self" }], result: results });
       }
     }
     catch (err) {
@@ -162,13 +160,16 @@ function doFindISBN(app) {
   };
 }
 
+/**
+ * Creates new cart using the newCart() from the model.mjs
+ */
 function doCreateCart(app) {
   return async function (req, res) {
     try {
       const obj = req.body;
-      console.log(obj);
+      //console.log(obj);
       const results = await app.locals.model.newCart(obj);
-      console.log(results);
+      //console.log(results);
       res.append('Location', req.selfUrl + '/' + results);
       res.sendStatus(CREATED);
       res.end();
@@ -180,20 +181,24 @@ function doCreateCart(app) {
   };
 }
 
+/**
+ * Retrieves the specified cart contents.
+ * 
+ */
 function doGetCart(app) {
   //console.log("in Get Cart")
   return async function (req, res) {
     try {
-      console.log("hey")
+      //console.log("hey")
       const q = req.params.cartId;
       //console.log(q);
       const results = await app.locals.model.getCart({ cartId: q });
-      console.log([results]);
+      //console.log([results]);
       const items = Object.entries(results).filter(([k, v]) => k !== '_id' && v > 0);
 
       if (items.length >= 2) {
         items.shift();
-        console.log(items);
+        //console.log(items);
         const finalR = items.map((obj, i) => ({
           links: {
             href: req.selfUrl.slice(0, req.selfUrl.lastIndexOf("carts")) + `books/${obj.slice(0, obj.lastIndexOf(","))}`,
@@ -218,6 +223,9 @@ function doGetCart(app) {
   };
 }
 
+/**
+ * Updates sku and nUnits of the books in the cart.
+ */
 function doUpdateCart(app) {
   return async function (req, res) {
     try {
