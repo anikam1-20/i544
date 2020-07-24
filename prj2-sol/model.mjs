@@ -310,8 +310,4 @@ const DB_NAME = "books"
 const Books_Catalog = "booksCatalog"
 
 //Shopping cart collection
-<<<<<<< HEAD
 const CART = "ShoppingCart"
-=======
-const CART = "ShoppingCart"
->>>>>>> 0d293f2b3f7d60cbb79c716482c8c1c958ff19e8
